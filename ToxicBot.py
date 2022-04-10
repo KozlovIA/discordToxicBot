@@ -6,7 +6,10 @@ import json
 import requests
 from youtube_dl import YoutubeDL
 from asyncio import sleep
-import time
+
+
+
+play_list = []      # лист музыки
 
 bot = commands.Bot(command_prefix='!') #define command decorators
 
@@ -26,10 +29,12 @@ async def on_message(message):
 
 @bot.command()
 async def online(ctx):
+    """Узнать у бота онлайн ли он"""
     await ctx.send("Я живее всех мертвых!")
 
 @bot.command()
 async def fox(ctx):
+    """Команда - загадка"""
     response = requests.get('https://some-random-api.ml/img/fox') # Get-запрос
     json_data = json.loads(response.text) # Извлекаем JSON
 
@@ -41,6 +46,7 @@ async def fox(ctx):
 
 @bot.command(pass_context=True)
 async def join(ctx):
+    """Просто присоеденить бота к каналу"""
     global voice
     channel = ctx.message.author.voice.channel
     voice = get(bot.voice_clients, guild = ctx.guild)
@@ -52,6 +58,7 @@ async def join(ctx):
 
 @bot.command(pass_context=True)
 async def leave(ctx):
+    """Выгнать бота. Может сам выйдешь?"""
     global voice
     channel = ctx.message.author.voice.channel
     voice = get(bot.voice_clients, guild = ctx.guild)
@@ -62,52 +69,97 @@ async def leave(ctx):
         voice = await channel.connect()
 
 
-
 YDL_OPTIONS = {'format': 'bestaudio', 'noplaylist':'False'}
 FFMPEG_OPTIONS = {'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5', 'options': '-vn'}
 
 
 @bot.command()
-async def play(ctx, *, args):
-
-    if ('https://' in args) == False:
-        args = func.search_URL(args)[0]
+async def play(ctx, *, args=None):
+    """Начать вопроизведение или добавить песню в плейлист"""
 
     global vc
-
     try:
         voice_channel = ctx.message.author.voice.channel
         vc = await voice_channel.connect()
     except:
         print('Уже подключен или не удалось подключиться')
 
-    if vc.is_playing():
-        await ctx.send(f'{ctx.message.author.mention}, музыка уже проигрывается.')
+    play_list.append(args)
 
-    else:
-        with YoutubeDL(YDL_OPTIONS) as ydl:
-            info = ydl.extract_info(args, download=False)
+    if len(play_list) == 0:
+        print("Плейлист пуст")
+        return
 
-        URL = info['formats'][0]['url']
+    while vc.is_playing():
+        await sleep(1)
 
-        vc.play(discord.FFmpegPCMAudio(executable="ffmpeg\\bin\\ffmpeg.exe", source = URL, **FFMPEG_OPTIONS))
-                
-        while vc.is_playing():
-            await sleep(1)
-        if not vc.is_paused():
-            await vc.disconnect()
+    if not vc.is_paused():
+        if len(play_list) > 1:
+            play_list.pop(0)
+
+        current_music = play_list[0]
+        
+
+        if ('https://' in current_music) == False:
+            current_music, name_current_music = func.search_URL(current_music)
+
+
+        if vc.is_playing():
+            await ctx.send(f'{ctx.message.author.mention}, музыка уже проигрывается.')
+
+        else:
+            with YoutubeDL(YDL_OPTIONS) as ydl:
+                info = ydl.extract_info(current_music, download=False)
+
+            URL = info['formats'][0]['url']
+            await ctx.send(f'Играем : {name_current_music}')
+            vc.play(discord.FFmpegPCMAudio(executable="ffmpeg\\bin\\ffmpeg.exe", source = URL, **FFMPEG_OPTIONS))
+
+
+@bot.command()
+async def next(ctx):
+    """Следующая композиция в плейлисте"""
+    if vc.is_playing() or vc.is_pause():
+        vc.stop()
+        await play(ctx)
+
 
 @bot.command()
 async def pause(ctx):
+    """Приостановить или продолжить воспроизведение музыки"""
     if vc.is_playing():
         vc.pause()
+        await ctx.send(f'Пауза в твоей счастливой жизни')
     elif vc.is_paused():
         vc.resume()
+        await ctx.send(f'Возращаем радость и страдания')
+
+@bot.command()
+async def resume(ctx):
+    """Продолжить проигрывание музыки"""
+    if vc.is_paused():
+        vc.resume()
+        await ctx.send(f'Возращаем радость и страдания, какой ты умный, знаешь слово "resume"')
         
 @bot.command()
 async def stop(ctx):
+    """Остановить проигрывание музыки? Себя останови!"""
     if vc.is_playing() or vc.is_pause():
         vc.stop()
+        await ctx.send(f'Моя остановочка')
+
+
+@bot.command()
+async def playlist(ctx):
+    """Посмотреть плейлист(кривая реализация в текущей версии)"""
+    name_list = ''
+    for i in range(len(play_list)):
+        name_list += play_list[i] + '\n'
+    embed = discord.Embed(color = 0xff9900, title = 'Playlist') # Создание Embed'a
+    embed.set_image(url = "https://itc.ua/wp-content/uploads/2019/09/Apple-Music-Android.jpg") # Устанавливаем картинку Embed'a
+    embed.add_field(name='Песенки', value=name_list)
+
+    await ctx.send(embed = embed) # Отправляем Embed
 
 
 bot.run('ODY1Njg3NzM5Mjg1NzY2MjA1.YPHoiA.fCz4Jr235GTFBhxtSOJc55UxjNo')

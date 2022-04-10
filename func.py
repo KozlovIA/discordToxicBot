@@ -18,7 +18,6 @@ def search_URL(music_name):
     clip = requests.get("https://www.youtube.com/watch?v=" + "{}".format(search_results[0]))
     clip2 = "https://www.youtube.com/watch?v=" + "{}".format(search_results[0])
 
-
     inspect = BeautifulSoup(clip.content, "html.parser")
     yt_title = inspect.find_all("meta", property="og:title")
 
