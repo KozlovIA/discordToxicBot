@@ -6,10 +6,11 @@ import json
 import requests
 from youtube_dl import YoutubeDL
 from asyncio import sleep
+from bs4 import BeautifulSoup
 
 
-
-play_list = []      # лист музыки
+play_list = []      # лист URL с музыкой
+name_list = []      # лист с именами песен
 
 bot = commands.Bot(command_prefix='!') #define command decorators
 
@@ -59,6 +60,7 @@ async def join(ctx):
 @bot.command(pass_context=True)
 async def leave(ctx):
     """Выгнать бота. Может сам выйдешь?"""
+    await stop(ctx)
     global voice
     channel = ctx.message.author.voice.channel
     voice = get(bot.voice_clients, guild = ctx.guild)
@@ -79,12 +81,25 @@ async def play(ctx, *, args=None):
 
     global vc
     try:
-        voice_channel = ctx.message.author.voice.channel
+        voice_channel = ctx.message.author.voice.channel    # подключение к каналу
         vc = await voice_channel.connect()
     except:
         print('Уже подключен или не удалось подключиться')
 
-    play_list.append(args)
+    if args != None:         # поиск песни или названия
+        if ('https://' in args) == False:   
+            p_temp, n_temp = func.search_URL(args)
+        else:
+            clip = requests.get(args)   # достаем имя на ютубе по ссылке
+            inspect = BeautifulSoup(clip.content, "html.parser")
+            yt_title = inspect.find_all("meta", property="og:title")
+            for concatMusic1 in yt_title:
+                pass
+            p_temp, n_temp = args, concatMusic1['content']
+
+        await ctx.send(f'{n_temp}, добавлена в плейлист.')
+        play_list.append(p_temp)
+        name_list.append(n_temp)
 
     if len(play_list) == 0:
         print("Плейлист пуст")
@@ -96,13 +111,10 @@ async def play(ctx, *, args=None):
     if not vc.is_paused():
         if len(play_list) > 1:
             play_list.pop(0)
+            name_list.pop(0)
 
         current_music = play_list[0]
-        
-
-        if ('https://' in current_music) == False:
-            current_music, name_current_music = func.search_URL(current_music)
-
+        name_current_music = name_list[0]
 
         if vc.is_playing():
             await ctx.send(f'{ctx.message.author.mention}, музыка уже проигрывается.')
@@ -112,8 +124,9 @@ async def play(ctx, *, args=None):
                 info = ydl.extract_info(current_music, download=False)
 
             URL = info['formats'][0]['url']
-            await ctx.send(f'Играем : {name_current_music}')
             vc.play(discord.FFmpegPCMAudio(executable="ffmpeg\\bin\\ffmpeg.exe", source = URL, **FFMPEG_OPTIONS))
+            await ctx.send(f'Играем : {name_current_music}')
+
 
 
 @bot.command()
@@ -151,13 +164,13 @@ async def stop(ctx):
 
 @bot.command()
 async def playlist(ctx):
-    """Посмотреть плейлист(кривая реализация в текущей версии)"""
-    name_list = ''
-    for i in range(len(play_list)):
-        name_list += play_list[i] + '\n'
+    """Посмотреть плейлист"""
+    song_name = ''
+    for i in range(len(name_list)):
+        song_name += name_list[i] + '\n'
     embed = discord.Embed(color = 0xff9900, title = 'Playlist') # Создание Embed'a
     embed.set_image(url = "https://itc.ua/wp-content/uploads/2019/09/Apple-Music-Android.jpg") # Устанавливаем картинку Embed'a
-    embed.add_field(name='Песенки', value=name_list)
+    embed.add_field(name='Песенки', value=song_name)
 
     await ctx.send(embed = embed) # Отправляем Embed
 
