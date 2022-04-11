@@ -7,10 +7,15 @@ import requests
 from youtube_dl import YoutubeDL
 from asyncio import sleep
 from bs4 import BeautifulSoup
-
+import traceback
+import threading
+#from discord import opus
+#import opuslib
 
 play_list = []      # лист URL с музыкой
-name_list = []      # лист с именами песен
+name_list = []      # лист с именами песен 
+time_to_leave = 600  # время до выхода бота из канала после окончания плейлиста
+
 
 bot = commands.Bot(command_prefix='!') #define command decorators
 
@@ -31,7 +36,7 @@ async def on_message(message):
 @bot.command()
 async def online(ctx):
     """Узнать у бота онлайн ли он"""
-    await ctx.send("Я живее всех мертвых!")
+    await ctx.send("Я живее всех мертвых! :ghost:")
 
 @bot.command()
 async def fox(ctx):
@@ -39,7 +44,7 @@ async def fox(ctx):
     response = requests.get('https://some-random-api.ml/img/fox') # Get-запрос
     json_data = json.loads(response.text) # Извлекаем JSON
 
-    embed = discord.Embed(color = 0xff9900, title = 'Random Fox') # Создание Embed'a
+    embed = discord.Embed(color = 0xff9900, title = 'Random Fox :fox:') # Создание Embed'a
     embed.set_image(url = json_data['link']) # Устанавливаем картинку Embed'a
     await ctx.send(embed = embed) # Отправляем Embed
 
@@ -48,43 +53,40 @@ async def fox(ctx):
 @bot.command(pass_context=True)
 async def join(ctx):
     """Просто присоеденить бота к каналу"""
-    global voice
+    if ~('voice' in globals()):
+        global vc
+        vc = get(bot.voice_clients, guild = ctx.guild)
     channel = ctx.message.author.voice.channel
-    voice = get(bot.voice_clients, guild = ctx.guild)
-    if voice and voice.is_connected():
-        await voice.move_to(channel)
+    if vc and vc.is_connected():
+        await vc.move_to(channel)
     else:
-        voice = await channel.connect()
-        await ctx.send(f'Токсичность залетает в беседу: {channel}')
+        vc = await channel.connect()
+        await ctx.send(f'Токсичность залетает в беседу: {channel} :hugging:')
+        
 
 @bot.command(pass_context=True)
-async def leave(ctx):
+async def leave(ctx, timer=False):
     """Выгнать бота. Может сам выйдешь?"""
+    if timer and (vc.is_playing() or vc.is_paused()):
+            return
     await stop(ctx)
     global voice
     channel = ctx.message.author.voice.channel
     voice = get(bot.voice_clients, guild = ctx.guild)
     if voice and voice.is_connected():
         await voice.disconnect()
-        await ctx.send(f'Токсичность покидает безмятежную беседу : {channel}')
+        await ctx.send(f'Токсичность покидает безмятежную беседу : {channel} :feet:')
     else:
         voice = await channel.connect()
-
+    
 
 YDL_OPTIONS = {'format': 'bestaudio', 'noplaylist':'False'}
 FFMPEG_OPTIONS = {'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5', 'options': '-vn'}
 
-
 @bot.command()
 async def play(ctx, *, args=None):
     """Начать вопроизведение или добавить песню в плейлист"""
-
-    global vc
-    try:
-        voice_channel = ctx.message.author.voice.channel    # подключение к каналу
-        vc = await voice_channel.connect()
-    except:
-        print('Уже подключен или не удалось подключиться')
+    await join(ctx)
 
     if args != None:         # поиск песни или названия
         if ('https://' in args) == False:   
@@ -96,8 +98,7 @@ async def play(ctx, *, args=None):
             for concatMusic1 in yt_title:
                 pass
             p_temp, n_temp = args, concatMusic1['content']
-
-        await ctx.send(f'{n_temp}, добавлена в плейлист.')
+        await ctx.send(f'{n_temp}, добавлена в плейлист :musical_note:')
         play_list.append(p_temp)
         name_list.append(n_temp)
 
@@ -105,36 +106,46 @@ async def play(ctx, *, args=None):
         print("Плейлист пуст")
         return
 
+    while vc.is_playing():  #пока музыка играет, ничего не делаем # при добавлении некст песни, запускается этот цикл и ждет, пока отыграет предыдущая
+        await sleep(1)
+    try:
+        if not vc.is_paused():
+            if len(play_list) > 1:
+                play_list.pop(0)
+                name_list.pop(0)
+
+            current_music = play_list[0]
+            name_current_music = name_list[0]
+
+            if vc.is_playing():
+                await ctx.send(f'{ctx.message.author.mention}, музыка уже проигрывается.')
+
+            else:
+                with YoutubeDL(YDL_OPTIONS) as ydl:
+                    info = ydl.extract_info(current_music, download=False)
+
+                URL = info['formats'][0]['url']
+                vc.play(discord.FFmpegPCMAudio(executable="ffmpeg\\bin\\ffmpeg.exe", source = URL, **FFMPEG_OPTIONS))
+                await ctx.send(f'Играем : {name_current_music} :headphones:')
+    except Exception as e:
+        await ctx.send("Произошла непредвиденная ошибка, забавно, но я сейчас даже не про тебя :blush:")
+        print('Ошибка:\n', traceback.format_exc())
     while vc.is_playing():
         await sleep(1)
-
-    if not vc.is_paused():
-        if len(play_list) > 1:
-            play_list.pop(0)
-            name_list.pop(0)
-
-        current_music = play_list[0]
-        name_current_music = name_list[0]
-
-        if vc.is_playing():
-            await ctx.send(f'{ctx.message.author.mention}, музыка уже проигрывается.')
-
-        else:
-            with YoutubeDL(YDL_OPTIONS) as ydl:
-                info = ydl.extract_info(current_music, download=False)
-
-            URL = info['formats'][0]['url']
-            vc.play(discord.FFmpegPCMAudio(executable="ffmpeg\\bin\\ffmpeg.exe", source = URL, **FFMPEG_OPTIONS))
-            await ctx.send(f'Играем : {name_current_music}')
-
+    await sleep(time_to_leave)
+    if ~vc.is_playing() and ~vc.is_paused():
+        await leave(ctx, timer=True)
 
 
 @bot.command()
 async def next(ctx):
     """Следующая композиция в плейлисте"""
-    if vc.is_playing() or vc.is_pause():
-        vc.stop()
-        await play(ctx)
+    try:
+        if vc.is_playing() or vc.is_pause():
+            vc.stop()
+            await play(ctx)
+    except:
+        await ctx.send("В плейлисте ничего нет :confused:")
 
 
 @bot.command()
@@ -142,24 +153,37 @@ async def pause(ctx):
     """Приостановить или продолжить воспроизведение музыки"""
     if vc.is_playing():
         vc.pause()
-        await ctx.send(f'Пауза в твоей счастливой жизни')
+        await ctx.send(f'Пауза в твоей счастливой жизни :confused:')
     elif vc.is_paused():
         vc.resume()
-        await ctx.send(f'Возращаем радость и страдания')
+        await ctx.send(f'Возращаем радость и страдания :kissing_heart:')
 
 @bot.command()
 async def resume(ctx):
     """Продолжить проигрывание музыки"""
     if vc.is_paused():
         vc.resume()
-        await ctx.send(f'Возращаем радость и страдания, какой ты умный, знаешь слово "resume"')
+        await ctx.send(f'Возращаем радость и страдания, какой ты умный, знаешь слово "resume" :nerd:')
         
 @bot.command()
 async def stop(ctx):
     """Остановить проигрывание музыки? Себя останови!"""
-    if vc.is_playing() or vc.is_pause():
-        vc.stop()
-        await ctx.send(f'Моя остановочка')
+    try:
+        if vc.is_playing() or vc.is_pause():
+            vc.stop()
+            await ctx.send(f'Моя остановочка :broken_heart:')
+    except:
+        print("Останавливать нечего")
+
+@bot.command()
+async def delete(ctx, arg):
+    """Для удаления песни, надо указать номер песни из playlist"""
+    try:
+        arg = int(arg) - 1
+        play_list.pop(arg)
+        name_list.pop(arg)
+    except:
+        await ctx.send("Не верный номер песни, а может ты просто дурачок :face_with_raised_eyebrow:")
 
 
 @bot.command()
@@ -167,10 +191,10 @@ async def playlist(ctx):
     """Посмотреть плейлист"""
     song_name = ''
     for i in range(len(name_list)):
-        song_name += name_list[i] + '\n'
+        song_name += str(i+1) + ' ' + name_list[i] + '\n'
     embed = discord.Embed(color = 0xff9900, title = 'Playlist') # Создание Embed'a
     embed.set_image(url = "https://itc.ua/wp-content/uploads/2019/09/Apple-Music-Android.jpg") # Устанавливаем картинку Embed'a
-    embed.add_field(name='Песенки', value=song_name)
+    embed.add_field(name='Песенки :heart_exclamation:', value=song_name)
 
     await ctx.send(embed = embed) # Отправляем Embed
 
