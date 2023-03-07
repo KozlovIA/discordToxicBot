@@ -1,30 +1,93 @@
 import func
+import time
+import json
 import discord
+import requests
+import traceback
 from discord.ext import commands
 from discord.utils import get
-import json
-import requests
 from youtube_dl import YoutubeDL
 from asyncio import sleep
-from bs4 import BeautifulSoup
-import traceback
-import threading
+from bs4 import BeautifulSoup 
+from threading import Timer
 #from discord import opus
 #import opuslib
 
 play_list = []      # лист URL с музыкой
 name_list = []      # лист с именами песен 
-time_to_leave = 600  # время до выхода бота из канала после окончания плейлиста
+time_to_leave = 6  # время до выхода бота из канала после окончания плейлиста
+global no_music_time    # время начала существования подключенного бота без музыки
+
+intents = discord.Intents.default()
+# intents.all()
+
+# bot_intents = ['auto_moderation',
+#  'auto_moderation_configuration',
+#  'auto_moderation_execution',
+#  'bans',
+#  'dm_messages',
+#  'dm_reactions',
+#  'dm_typing',
+#  'emojis',
+#  'emojis_and_stickers',
+#  'guild_messages',
+#  'guild_reactions',
+#  'guild_scheduled_events',
+#  'guild_typing',
+#  'guilds',
+#  'integrations',
+#  'invites',
+#  'members',
+#  'message_content',
+#  'messages',
+#  'presences',
+#  'reactions',
+#  'typing',
+#  'value',
+#  'voice_states',
+#  'webhooks']
+
+# for intent in bot_intents:
+#     exec(f"intents.{intent} = True")
+
+intents.message_content = True
+
+# intents.auto_moderation = True
+# intents.auto_moderation_configuration = True
+# intents.auto_moderation_execution = True
+# intents.bans = True
+# intents.dm_messages = True
+# intents.dm_reactions = True
+# intents.dm_typing = True
+# intents.emojis = True
+# # intents.emojis_and_stickers = True
+# intents.guild_messages = True
+# intents.guild_reactions = True
+# intents.guild_scheduled_events = True
+# intents.guild_typing = True
+# intents.guilds = True
+# intents.integrations = True
+# intents.invites = True
+# intents.members = True
+# intents.message_content = True
+# intents.messages = True
+# intents.presences = True
+# # intents.reactions = True
+# # intents.typing = True
+# intents.value = True
+intents.voice_states = True
+# intents.webhooks = True
 
 
-bot = commands.Bot(command_prefix='!') #define command decorators
+bot = commands.Bot(command_prefix='!', intents=intents) #define command decorators and bots
+
 
 @bot.event
 async def on_ready():
     print('Logged on!')
 
 
-#@bot.command()     # комментарий, чтобы функция on_message не работала
+@bot.command()     # комментарий, чтобы функция on_message не работала
 async def on_message(message):
     print('Message from {0.author}: {0.content}'.format(message))
     if str(message.author) == "ToxicBot#7701":
@@ -53,22 +116,29 @@ async def fox(ctx):
 @bot.command(pass_context=True)
 async def join(ctx):
     """Просто присоеденить бота к каналу"""
-    if ~('voice' in globals()):
-        global vc
-        vc = get(bot.voice_clients, guild = ctx.guild)
-    channel = ctx.message.author.voice.channel
-    if vc and vc.is_connected():
-        await vc.move_to(channel)
-    else:
-        vc = await channel.connect()
-        await ctx.send(f'Токсичность залетает в беседу: {channel} :hugging:')
-        
+    try:
+        if ~('voice' in globals()):
+            global vc
+            vc = get(bot.voice_clients, guild = ctx.guild)
+        channel = ctx.message.author.voice.channel
+        if vc and vc.is_connected():
+            await vc.move_to(channel)
+        else:
+            vc = await channel.connect()
+            await ctx.send(f'Токсичность залетает в беседу: {channel} :hugging:')
+            timer = Timer(5, await leave, ctx, timer=True)
+            timer.start()       # при коннекте запускается таймер для дисконнекта по времени
+    except:
+        print("join error")
+
 
 @bot.command(pass_context=True)
 async def leave(ctx, timer=False):
     """Выгнать бота. Может сам выйдешь?"""
-    if timer and (vc.is_playing() or vc.is_paused()):
-            return
+    """ if timer:
+        if ~vc.playing() and ~vc.is_paused():
+            no_music_time = time.time()
+         """
     await stop(ctx)
     global voice
     channel = ctx.message.author.voice.channel
@@ -76,8 +146,6 @@ async def leave(ctx, timer=False):
     if voice and voice.is_connected():
         await voice.disconnect()
         await ctx.send(f'Токсичность покидает безмятежную беседу : {channel} :feet:')
-    else:
-        voice = await channel.connect()
     
 
 YDL_OPTIONS = {'format': 'bestaudio', 'noplaylist':'False'}
@@ -130,11 +198,6 @@ async def play(ctx, *, args=None):
     except Exception as e:
         await ctx.send("Произошла непредвиденная ошибка, забавно, но я сейчас даже не про тебя :blush:")
         print('Ошибка:\n', traceback.format_exc())
-    while vc.is_playing():
-        await sleep(1)
-    await sleep(time_to_leave)
-    if ~vc.is_playing() and ~vc.is_paused():
-        await leave(ctx, timer=True)
 
 
 @bot.command()
@@ -199,4 +262,8 @@ async def playlist(ctx):
     await ctx.send(embed = embed) # Отправляем Embed
 
 
-bot.run('ODY1Njg3NzM5Mjg1NzY2MjA1.YPHoiA.fCz4Jr235GTFBhxtSOJc55UxjNo')
+f_token = open("token.token")
+token = f_token.read()
+f_token.close()
+
+bot.run(token)
