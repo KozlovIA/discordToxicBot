@@ -261,6 +261,10 @@ async def playlist(ctx):
 
     await ctx.send(embed = embed) # Отправляем Embed
 
+@bot.command()
+async def петухи(ctx):
+    await ctx.send(f'На сервере присутвует только 1 петух **Medvet(Кирилл)#3679** :rooster: ')
+    
 
 f_token = open("token.token")
 token = f_token.read()
